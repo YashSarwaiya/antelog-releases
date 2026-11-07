@@ -27,7 +27,11 @@ irm https://github.com/YashSarwaiya/antelog-releases/releases/latest/download/in
 
 The installer checks the package's SHA-256 checksum. It installs to your user folder (no admin
 rights needed) and starts the guard in the background. It also connects Claude Code, Codex and
-Cursor if they're installed, then runs a setup check. Restart any open sessions afterwards.
+Cursor if they're installed, then runs a setup check.
+
+**Sessions that are already open are not protected until you restart them** (terminal: exit and
+run `claude` again; VS Code: "Developer: Reload Window"; Cursor: restart it). `antelog doctor`
+lists the ones still running without the guard.
 
 **Codex users:** Codex ignores new hooks until you approve them. Open Codex and type `/hooks`
 to approve Antelog's hooks; do it again after each Antelog update.
@@ -43,7 +47,7 @@ to approve Antelog's hooks; do it again after each Antelog update.
 | Reading secrets | `.env` files, SSH keys, cloud CLI login files (Railway, AWS, gcloud, Supabase, Neon, kube) |
 | Running code from the internet | `curl … \| sh`, `bash <(curl …)` |
 | Destructive commands aimed at production | `rails db:drop`, `kubectl delete`, `DELETE FROM` when they mention a production name |
-| Turning the guard off | editing its settings or log, stopping its service, uninstalling it |
+| Turning the guard off | editing its settings, its hook files (including Claude Code's plugin cache) or its log, stopping its service, uninstalling it |
 | Deleting through connected services (MCP tools) | `mcp__Neon__delete_project`, `delete_branch`, `restore_snapshot`, `mcp__supabase__delete_project`, `mcp__railway__volumeDelete`, `mcp__github__delete_repository` |
 | Destructive SQL through MCP database tools | `run_sql` / `apply_migration` with `DROP`, `TRUNCATE`, or `DELETE` without `WHERE` |
 
@@ -83,7 +87,7 @@ write-down-then-vote design, with real blocking rules added on top.
 
 ```sh
 antelog --version       # which version is installed
-antelog doctor          # check your setup and get fix-it tips
+antelog doctor          # check your setup, get fix-it tips, see open sessions that run without the guard
 antelog log             # recent actions, allowed or blocked
 antelog blocked         # only what was blocked, and why
 antelog verify          # check the log hasn't been changed
@@ -129,7 +133,8 @@ already have.
   script or a tool that can write files is not; the optional AI checker or a quick manual run
   handles those.
 - **Updating Antelog restarts the guard.** An agent action in flight at that moment is blocked
-  (never allowed); just retry it.
+  (never allowed) and the agent is told to retry it.
+- **The open-session check** in `antelog doctor` works on macOS and Linux; Windows doesn't have it yet.
 - **Claude Code older than 2.1.295** may let an action through if the hook program can't start
   at all. Update Claude Code.
 - **Cursor** has a known bug where blocking file *reads* doesn't always work. Antelog's shell
