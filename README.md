@@ -142,5 +142,7 @@ Your history is kept unless you add `--purge` (or `-Purge` on Windows).
 
 ## License and credits
 
+Antelog is open source under the [Apache 2.0 license](LICENSE). Source code: [YashSarwaiya/antelog](https://github.com/YashSarwaiya/antelog).
+
 Antelog builds on [LogAct](https://github.com/facebookresearch/logact) by Meta Platforms, Inc.,
 used under the MIT license. The license text ships in every package as `LICENSE-logact`.
