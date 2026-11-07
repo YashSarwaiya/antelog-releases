@@ -1,14 +1,14 @@
 # Antelog
 
-**A safety guard for AI coding agents.** Antelog checks every action Claude Code or Cursor
-takes *before* it runs. It blocks the dangerous ones (deleting a database, wiping cloud
+**A safety guard for AI coding agents.** Antelog checks every action Claude Code, Codex or
+Cursor takes *before* it runs. It blocks the dangerous ones (deleting a database, wiping cloud
 storage, reading secrets) and keeps a tamper-evident record of everything.
 
 In April 2026 a coding agent deleted a company's production database, and its backups, with
 one API call in nine seconds. It found a powerful token in a file and used it. Antelog is
 built to stop that kind of action.
 
-> Status: early (v0.9). It works on macOS, Linux and Windows with Claude Code and Cursor.
+> Status: early (v0.9). It works on macOS, Linux and Windows with Claude Code, Codex and Cursor.
 > Feedback is very welcome; please open an issue.
 
 ## Install
@@ -26,9 +26,11 @@ irm https://github.com/YashSarwaiya/antelog-releases/releases/latest/download/in
 ```
 
 The installer checks the package's SHA-256 checksum. It installs to your user folder (no admin
-rights needed) and starts the guard in the background. It also connects Claude Code and Cursor
-if they're installed, then runs a setup check. Restart any open Claude Code or Cursor sessions
-afterwards.
+rights needed) and starts the guard in the background. It also connects Claude Code, Codex and
+Cursor if they're installed, then runs a setup check. Restart any open sessions afterwards.
+
+**Codex users:** Codex ignores new hooks until you approve them. Open Codex and type `/hooks`
+to approve Antelog's hooks; do it again after each Antelog update.
 
 ## What it blocks
 
@@ -54,7 +56,7 @@ When something is blocked, the agent sees why, for example:
 ## How it works
 
 ```
- Claude Code / Cursor wants to run something
+ Claude Code / Codex / Cursor wants to run something
         │   (a hook asks Antelog first)
         ▼
  Antelog, on your computer
@@ -123,6 +125,9 @@ already have.
   at all. Update Claude Code.
 - **Cursor** has a known bug where blocking file *reads* doesn't always work. Antelog's shell
   rules (`cat .env`) still apply.
+- **Codex** lets an action through if its hook can't start at all (for example, Antelog was
+  removed by hand on Windows), and it skips hooks you haven't approved with `/hooks`.
+  `antelog doctor` checks for this.
 
 ## Uninstall
 
