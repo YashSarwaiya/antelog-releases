@@ -44,11 +44,14 @@ to approve Antelog's hooks; do it again after each Antelog update.
 | Running code from the internet | `curl … \| sh`, `bash <(curl …)` |
 | Destructive commands aimed at production | `rails db:drop`, `kubectl delete`, `DELETE FROM` when they mention a production name |
 | Turning the guard off | editing its settings or log, stopping its service, uninstalling it |
+| Deleting through connected services (MCP tools) | `mcp__Neon__delete_project`, `delete_branch`, `restore_snapshot`, `mcp__supabase__delete_project`, `mcp__railway__volumeDelete`, `mcp__github__delete_repository` |
+| Destructive SQL through MCP database tools | `run_sql` / `apply_migration` with `DROP`, `TRUNCATE`, or `DELETE` without `WHERE` |
 
 Antelog also **reads the scripts a command runs** (`python cleanup.py`, `npm run reset`,
 `psql -f fix.sql`) and blocks them if they contain any of the above.
 
-Everything else runs normally. A check takes about 5–10 ms.
+Everything else runs normally, including read-only commands that merely mention a dangerous
+word (`grep "DROP TABLE" docs/`, `git log --grep delete`). A check takes about 5–10 ms.
 
 When something is blocked, the agent sees why, for example:
 `Blocked by safety rule: deleting Railway volumes, services, environments, or projects.`
@@ -79,10 +82,13 @@ write-down-then-vote design, with real blocking rules added on top.
 ## Commands
 
 ```sh
+antelog --version       # which version is installed
 antelog doctor          # check your setup and get fix-it tips
 antelog log             # recent actions, allowed or blocked
 antelog blocked         # only what was blocked, and why
 antelog verify          # check the log hasn't been changed
+antelog report          # save an HTML, CSV (--format csv) or JSON report; --since 7d
+antelog dashboard       # open the report in your browser
 antelog setup cursor    # connect Cursor (add --remove to disconnect)
 ```
 
@@ -119,8 +125,11 @@ already have.
   read-only credentials where you can, and keep backups outside the system they protect.
 - **A determined agent running as your user** could find a way around a guard that runs as the
   same user. Antelog blocks the obvious ways and fails safe if it's stopped.
-- **Rules match text,** so they can block harmless commands that mention a dangerous phrase.
-  The AI checker or a quick manual run handles those.
+- **Rules match text.** Read-only commands that mention a dangerous phrase are allowed, but a
+  script or a tool that can write files is not; the optional AI checker or a quick manual run
+  handles those.
+- **Updating Antelog restarts the guard.** An agent action in flight at that moment is blocked
+  (never allowed); just retry it.
 - **Claude Code older than 2.1.295** may let an action through if the hook program can't start
   at all. Update Claude Code.
 - **Cursor** has a known bug where blocking file *reads* doesn't always work. Antelog's shell
