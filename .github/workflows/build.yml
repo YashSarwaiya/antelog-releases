@@ -1,0 +1,183 @@
+name: Build and publish
+
+# Builds Antelog from the private source repo and publishes the downloads here.
+# Builds run in this public repo because GitHub Actions is free for public repos.
+#
+# Privacy: the source stays private. It is fetched with SOURCE_TOKEN (a fine-grained,
+# read-only token for YashSarwaiya/antelog), never saved to disk credentials, and all
+# compiler output is hidden, because these logs are public. If a build fails, rebuild
+# the same tag on a private machine to see the error.
+#
+# Run it: Actions > Build and publish > Run workflow, with the source tag (e.g. v0.9.25).
+# Only people with write access to this repo can run it; it has no pull request trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Source tag in YashSarwaiya/antelog (e.g. v0.9.25)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ inputs.tag }}
+
+env:
+  SOURCE: YashSarwaiya/antelog
+  BINS: -p logact_commit_cli_lib --bin logact_commit_cli -p logact_local_server_lib --bin logact_local_server -p agentbus_cli_lib --bin agentbus_cli
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+    - id: v
+      env:
+        TAG: ${{ inputs.tag }}
+      run: |
+        echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must look like v1.2.3"; exit 1; }
+        echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      ANTELOG_VERSION: ${{ needs.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ aarch64-apple-darwin, x86_64-apple-darwin ]
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ env.SOURCE }}
+        ref: refs/tags/${{ inputs.tag }}
+        token: ${{ secrets.SOURCE_TOKEN }}
+        persist-credentials: false
+    - run: rustup target add ${{ matrix.target }}
+    - name: Build (output hidden)
+      run: cargo build --release --locked --target ${{ matrix.target }} $BINS > /dev/null 2>&1 || { echo "build failed (output hidden: the source is private)"; exit 1; }
+    - name: Smoke test
+      if: matrix.target == 'aarch64-apple-darwin'
+      run: target/${{ matrix.target }}/release/logact_commit_cli --help > /dev/null
+    - run: sh scripts/package.sh "${{ needs.version.outputs.version }}" ${{ matrix.target }} target/${{ matrix.target }}/release dist
+    - uses: actions/upload-artifact@v4
+      with:
+        name: pkg-${{ matrix.target }}
+        path: dist/*
+        retention-days: 1
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      ANTELOG_VERSION: ${{ needs.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu ]
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ env.SOURCE }}
+        ref: refs/tags/${{ inputs.tag }}
+        token: ${{ secrets.SOURCE_TOKEN }}
+        persist-credentials: false
+    - run: rustup target add ${{ matrix.target }}
+    - name: Install zig (portable builds for older Linux too)
+      run: |
+        pip3 install --user ziglang
+        cargo install --locked cargo-zigbuild
+    # glibc 2.17 keeps the programs working on Linux systems from 2014 onward.
+    - name: Build (output hidden)
+      run: cargo zigbuild --release --locked --target ${{ matrix.target }}.2.17 $BINS > /dev/null 2>&1 || { echo "build failed (output hidden: the source is private)"; exit 1; }
+    - name: Smoke test
+      if: matrix.target == 'x86_64-unknown-linux-gnu'
+      run: target/${{ matrix.target }}/release/logact_commit_cli --help > /dev/null
+    - run: sh scripts/package.sh "${{ needs.version.outputs.version }}" ${{ matrix.target }} target/${{ matrix.target }}/release dist
+    - uses: actions/upload-artifact@v4
+      with:
+        name: pkg-${{ matrix.target }}
+        path: dist/*
+        retention-days: 1
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      ANTELOG_VERSION: ${{ needs.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - { target: x86_64-pc-windows-msvc, arch: x86_64 }
+        - { target: aarch64-pc-windows-msvc, arch: arm64 }
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ env.SOURCE }}
+        ref: refs/tags/${{ inputs.tag }}
+        token: ${{ secrets.SOURCE_TOKEN }}
+        persist-credentials: false
+    - run: rustup target add ${{ matrix.target }}
+    - name: Build (output hidden)
+      shell: pwsh
+      run: |
+        cargo build --release --locked --target ${{ matrix.target }} $($env:BINS -split ' ') *> $null
+        if ($LASTEXITCODE -ne 0) { Write-Output "build failed (output hidden: the source is private)"; exit 1 }
+    - name: Smoke test
+      if: matrix.arch == 'x86_64'
+      run: target/${{ matrix.target }}/release/logact_commit_cli.exe --help > $null
+    - shell: pwsh
+      run: ./scripts/package-windows.ps1 -Version "${{ needs.version.outputs.version }}" -Arch ${{ matrix.arch }} -BinDir target/${{ matrix.target }}/release -OutDir dist
+    - uses: actions/upload-artifact@v4
+      with:
+        name: pkg-${{ matrix.target }}
+        path: dist/*
+        retention-days: 1
+
+  publish:
+    needs: [ version, macos, linux, windows ]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ env.SOURCE }}
+        ref: refs/tags/${{ inputs.tag }}
+        token: ${{ secrets.SOURCE_TOKEN }}
+        persist-credentials: false
+        path: src
+    - uses: actions/download-artifact@v4
+      with:
+        path: release
+        pattern: pkg-*
+        merge-multiple: true
+    - name: Add the installers and a combined checksum list
+      run: |
+        cp src/install/install.sh src/install/install.ps1 release/
+        cd release
+        # The installers ask for "antelog-latest-<os>-<arch>" by default, so ship a copy under that name too.
+        version="${{ needs.version.outputs.version }}"
+        for f in antelog-"$version"-*.tar.gz antelog-"$version"-*.zip; do
+          [ -e "$f" ] || continue
+          latest="${f/$version/latest}"
+          cp "$f" "$latest"
+          sha256sum "$latest" > "$latest.sha256"
+        done
+        sha256sum antelog-* install.sh install.ps1 | grep -v '\.sha256' > SHA256SUMS && ls -la
+    # The annotated tag's message in the source repo is the release notes.
+    - name: Release notes from the source tag
+      env:
+        GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        obj=$(gh api "repos/$SOURCE/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha')
+        if [ "${obj%% *}" = "tag" ]; then gh api "repos/$SOURCE/git/tags/${obj#* }" --jq .message > notes.md; fi
+        [ -s notes.md ] || echo "Antelog ${{ needs.version.outputs.version }}" > notes.md
+    - name: Publish
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ inputs.tag }}
+      run: gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --title "Antelog ${{ needs.version.outputs.version }}" --notes-file notes.md
