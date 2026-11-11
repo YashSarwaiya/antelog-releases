@@ -58,7 +58,8 @@ jobs:
         persist-credentials: false
     - run: rustup target add ${{ matrix.target }}
     - name: Build (output hidden)
-      run: cargo build --release --locked --target ${{ matrix.target }} $BINS > /dev/null 2>&1 || { echo "build failed (output hidden: the source is private)"; exit 1; }
+      run: |
+        cargo build --release --locked --target ${{ matrix.target }} $BINS > /dev/null 2>&1 || { echo "build failed (output hidden, the source is private)"; exit 1; }
     - name: Smoke test
       if: matrix.target == 'aarch64-apple-darwin'
       run: target/${{ matrix.target }}/release/logact_commit_cli --help > /dev/null
@@ -92,7 +93,8 @@ jobs:
         cargo install --locked cargo-zigbuild
     # glibc 2.17 keeps the programs working on Linux systems from 2014 onward.
     - name: Build (output hidden)
-      run: cargo zigbuild --release --locked --target ${{ matrix.target }}.2.17 $BINS > /dev/null 2>&1 || { echo "build failed (output hidden: the source is private)"; exit 1; }
+      run: |
+        cargo zigbuild --release --locked --target ${{ matrix.target }}.2.17 $BINS > /dev/null 2>&1 || { echo "build failed (output hidden, the source is private)"; exit 1; }
     - name: Smoke test
       if: matrix.target == 'x86_64-unknown-linux-gnu'
       run: target/${{ matrix.target }}/release/logact_commit_cli --help > /dev/null
@@ -126,7 +128,7 @@ jobs:
       shell: pwsh
       run: |
         cargo build --release --locked --target ${{ matrix.target }} $($env:BINS -split ' ') *> $null
-        if ($LASTEXITCODE -ne 0) { Write-Output "build failed (output hidden: the source is private)"; exit 1 }
+        if ($LASTEXITCODE -ne 0) { Write-Output "build failed (output hidden, the source is private)"; exit 1 }
     - name: Smoke test
       if: matrix.arch == 'x86_64'
       run: target/${{ matrix.target }}/release/logact_commit_cli.exe --help > $null
